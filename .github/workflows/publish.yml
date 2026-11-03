@@ -1,0 +1,176 @@
+name: Build and publish to Steam Workshop
+
+on:
+  push:
+    branches: [main]
+
+permissions: {}
+
+jobs:
+  meta:
+    name: Check PR labels
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      skip: ${{ steps.pr.outputs.skip }}
+      changenote: ${{ steps.pr.outputs.changenote }}
+    steps:
+      - name: Find PR for this push
+        id: pr
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const sha = context.sha;
+            const short = sha.substring(0, 7);
+            const { data: prs } = await github.rest.repos.listPullRequestsAssociatedWithCommit({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              commit_sha: sha,
+            });
+            const pr = prs.find(p => p.merge_commit_sha === sha)
+              || prs.find(p => p.merged_at && p.base.ref === 'main')
+              || prs[0];
+            let skip = false;
+            let changenote;
+            if (pr) {
+              const labels = pr.labels.map(l => l.name);
+              skip = labels.includes('skip-publish');
+              changenote = `${pr.title} (#${pr.number}, ${short})`;
+              core.info(`PR #${pr.number}: "${pr.title}" labels=[${labels.join(', ')}]`);
+            } else {
+              const msg = (context.payload.head_commit && context.payload.head_commit.message) || '';
+              changenote = `${msg.split('\n')[0]} (${short})`;
+              core.info('No PR associated with this commit (direct push); publishing.');
+            }
+            if (skip) core.notice(`PR #${pr.number} has the skip-publish label; not publishing.`);
+            core.setOutput('skip', String(skip));
+            core.setOutput('changenote', changenote);
+
+  build:
+    name: Validate and build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: GDScript syntax check (gdparse)
+        run: |
+          pip install "gdtoolkit==3.*"
+          find mods-unpacked -name '*.gd' -print0 | xargs -0 -t -n1 gdparse
+
+      - name: Validate manifest.json
+        run: jq -e . mods-unpacked/Humanspeak-WeaponBorders/manifest.json > /dev/null
+
+      - name: Build zip
+        shell: pwsh
+        run: ./build.ps1
+
+      - name: Check zip layout
+        run: |
+          entries="$(unzip -Z1 dist/Humanspeak-WeaponBorders.zip)"
+          echo "$entries"
+          if echo "$entries" | grep -q '\\'; then echo "::error::Zip entry contains a backslash"; exit 1; fi
+          if echo "$entries" | grep -v '^mods-unpacked/Humanspeak-WeaponBorders/'; then echo "::error::Zip entry outside mods-unpacked/Humanspeak-WeaponBorders/"; exit 1; fi
+          echo "$entries" | grep -qx 'mods-unpacked/Humanspeak-WeaponBorders/manifest.json' || { echo "::error::manifest.json missing from zip"; exit 1; }
+          echo "$entries" | grep -qx 'mods-unpacked/Humanspeak-WeaponBorders/mod_main.gd' || { echo "::error::mod_main.gd missing from zip"; exit 1; }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Humanspeak-WeaponBorders
+          path: dist/Humanspeak-WeaponBorders.zip
+          if-no-files-found: error
+
+  publish:
+    name: Publish to Steam Workshop
+    needs: [meta, build]
+    if: needs.meta.outputs.skip != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions: {}
+    concurrency:
+      group: steam-workshop-publish
+      cancel-in-progress: false
+    env:
+      WORKSHOP_ITEM_ID: ${{ vars.WORKSHOP_ITEM_ID }}
+      STEAM_USERNAME: ${{ secrets.STEAM_USERNAME }}
+      STEAM_CONFIG_VDF: ${{ secrets.STEAM_CONFIG_VDF }}
+      CHANGENOTE: ${{ needs.meta.outputs.changenote }}
+    steps:
+      - name: Check configuration
+        id: cfg
+        run: |
+          if [ -z "$WORKSHOP_ITEM_ID" ]; then
+            echo "::notice::Repo variable WORKSHOP_ITEM_ID is not set; skipping Workshop publish (do the first upload manually, then set it)."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          elif [ -z "$STEAM_USERNAME" ] || [ -z "$STEAM_CONFIG_VDF" ]; then
+            echo "::notice::Secrets STEAM_USERNAME and/or STEAM_CONFIG_VDF are not set; skipping Workshop publish."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          elif ! [[ "$WORKSHOP_ITEM_ID" =~ ^[0-9]+$ ]]; then
+            echo "::error::WORKSHOP_ITEM_ID must be numeric, got '$WORKSHOP_ITEM_ID'."
+            exit 1
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Download built zip
+        if: steps.cfg.outputs.ready == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: Humanspeak-WeaponBorders
+          path: ${{ runner.temp }}/workshop-content
+
+      - name: Setup steamcmd
+        if: steps.cfg.outputs.ready == 'true'
+        id: steamcmd
+        uses: CyberAndrii/setup-steamcmd@v1
+
+      - name: Restore Steam login (config.vdf)
+        if: steps.cfg.outputs.ready == 'true'
+        env:
+          STEAMCMD_DIR: ${{ steps.steamcmd.outputs.directory }}
+        run: |
+          # Same approach as game-ci/steam-deploy: write the logged-in config.vdf
+          # to both possible steamcmd config locations.
+          for dir in "$HOME/Steam/config" "$STEAMCMD_DIR/config"; do
+            mkdir -p "$dir"
+            echo "$STEAM_CONFIG_VDF" | base64 -d > "$dir/config.vdf"
+            chmod 600 "$dir/config.vdf"
+          done
+
+      - name: Publish Workshop item
+        if: steps.cfg.outputs.ready == 'true'
+        run: |
+          content="$RUNNER_TEMP/workshop-content"
+          ls -la "$content"
+          [ "$(ls -A "$content")" = "Humanspeak-WeaponBorders.zip" ] || { echo "::error::Unexpected content folder contents"; exit 1; }
+
+          # Escape for a VDF quoted string.
+          note="$(printf '%s' "$CHANGENOTE" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g')"
+          vdf="$RUNNER_TEMP/workshop_item.vdf"
+          cat > "$vdf" <<EOF
+          "workshopitem"
+          {
+            "appid" "1942280"
+            "publishedfileid" "$WORKSHOP_ITEM_ID"
+            "contentfolder" "$content"
+            "changenote" "$note"
+          }
+          EOF
+          cat "$vdf"
+
+          set +e
+          steamcmd +login "$STEAM_USERNAME" +workshop_build_item "$vdf" +quit 2>&1 | tee "$RUNNER_TEMP/steamcmd.log"
+          code=${PIPESTATUS[0]}
+          set -e
+          if [ "$code" -ne 0 ] || grep -Eq 'ERROR!|FAILED|Login Failure|Failed to update workshop item' "$RUNNER_TEMP/steamcmd.log"; then
+            echo "::error::steamcmd failed (exit $code). If the login failed, refresh the STEAM_CONFIG_VDF secret (see README)."
+            exit 1
+          fi
+          echo "::notice::Published Workshop item $WORKSHOP_ITEM_ID: $CHANGENOTE"
