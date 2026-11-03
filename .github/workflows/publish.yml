@@ -23,14 +23,14 @@ jobs:
       changenote: ${{ steps.pr.outputs.changenote }}
       version: ${{ steps.pr.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           sparse-checkout: mods-unpacked/Humanspeak-WeaponBorders/manifest.json
           sparse-checkout-cone-mode: false
 
       - name: Find PR, compute next version
         id: pr
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const fs = require('fs');
@@ -95,9 +95,9 @@ jobs:
     env:
       VERSION: ${{ needs.meta.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
 
@@ -131,7 +131,7 @@ jobs:
           zipped="$(unzip -p dist/Humanspeak-WeaponBorders.zip mods-unpacked/Humanspeak-WeaponBorders/manifest.json | jq -r .version_number)"
           [ "$zipped" = "$VERSION" ] || { echo "::error::Zipped manifest version is '$zipped', expected '$VERSION'"; exit 1; }
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: Humanspeak-WeaponBorders
           path: dist/Humanspeak-WeaponBorders.zip
@@ -171,7 +171,7 @@ jobs:
 
       - name: Download built zip
         if: steps.cfg.outputs.ready == 'true'
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: Humanspeak-WeaponBorders
           path: ${{ runner.temp }}/workshop-content
@@ -179,7 +179,7 @@ jobs:
       - name: Setup steamcmd
         if: steps.cfg.outputs.ready == 'true'
         id: steamcmd
-        uses: CyberAndrii/setup-steamcmd@v1
+        uses: andriivitiv/setup-steamcmd@v1
 
       - name: Restore Steam login (config.vdf)
         if: steps.cfg.outputs.ready == 'true'
@@ -227,7 +227,7 @@ jobs:
 
       - name: Tag v${{ env.VERSION }}
         if: steps.cfg.outputs.ready == 'true'
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const tag = `v${process.env.VERSION}`;
