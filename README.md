@@ -26,6 +26,8 @@ Logs: `%APPDATA%\Brotato\logs\` (search for `Humanspeak-WeaponBorders`).
 1. Syntax-checks every `.gd` file with gdtoolkit 3 (`gdparse`), validates `manifest.json`, builds the zip with `build.ps1` (pwsh), checks the zip layout, and uploads it as a build artifact.
 2. Publishes the zip to the existing Workshop item with `steamcmd +workshop_build_item`. Only the content and a change note (PR title, number and short SHA) are updated; the title, description and preview stay as they are on Steam.
 
+**Versioning:** the latest `vX.Y.Z` git tag is the published version. Label the PR `major`, `minor` or `patch` (default: patch; the largest label wins); on merge CI bumps the latest tag, stamps that version into the zipped `manifest.json`, prefixes the change note with it, and tags the merge commit after a successful publish. The `version_number` in the repo's `manifest.json` is only the starting version used when no tag exists yet; don't bump it by hand.
+
 **Skipping a publish:** add the `skip-publish` label to the PR before merging. Direct pushes with no PR always publish.
 
 **Configuration** (Settings → Environments → `steam`; the publish job runs in that environment):

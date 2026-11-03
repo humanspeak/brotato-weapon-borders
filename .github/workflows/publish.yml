@@ -6,9 +6,14 @@ on:
 
 permissions: {}
 
+# One run at a time, so two merges can't compute the same next version.
+concurrency:
+  group: steam-workshop-publish
+  cancel-in-progress: false
+
 jobs:
   meta:
-    name: Check PR labels
+    name: Check PR labels and compute version
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -16,47 +21,83 @@ jobs:
     outputs:
       skip: ${{ steps.pr.outputs.skip }}
       changenote: ${{ steps.pr.outputs.changenote }}
+      version: ${{ steps.pr.outputs.version }}
     steps:
-      - name: Find PR for this push
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: mods-unpacked/Humanspeak-WeaponBorders/manifest.json
+          sparse-checkout-cone-mode: false
+
+      - name: Find PR, compute next version
         id: pr
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
+            const fs = require('fs');
+            const { owner, repo } = context.repo;
             const sha = context.sha;
             const short = sha.substring(0, 7);
+            const SEMVER = /^v(\d+)\.(\d+)\.(\d+)$/;
+
             const { data: prs } = await github.rest.repos.listPullRequestsAssociatedWithCommit({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              commit_sha: sha,
+              owner, repo, commit_sha: sha,
             });
             const pr = prs.find(p => p.merge_commit_sha === sha)
               || prs.find(p => p.merged_at && p.base.ref === 'main')
               || prs[0];
-            let skip = false;
-            let changenote;
+
+            let labels = [];
+            let title;
             if (pr) {
-              const labels = pr.labels.map(l => l.name);
-              skip = labels.includes('skip-publish');
-              changenote = `${pr.title} (#${pr.number}, ${short})`;
+              labels = pr.labels.map(l => l.name);
+              title = `${pr.title} (#${pr.number}, ${short})`;
               core.info(`PR #${pr.number}: "${pr.title}" labels=[${labels.join(', ')}]`);
             } else {
               const msg = (context.payload.head_commit && context.payload.head_commit.message) || '';
-              changenote = `${msg.split('\n')[0]} (${short})`;
-              core.info('No PR associated with this commit (direct push); publishing.');
+              title = `${msg.split('\n')[0]} (${short})`;
+              core.info('No PR associated with this commit (direct push); publishing as a patch.');
             }
+
+            const skip = labels.includes('skip-publish');
             if (skip) core.notice(`PR #${pr.number} has the skip-publish label; not publishing.`);
+
+            // Latest vX.Y.Z tag is the published version; the manifest is the base before any tag exists.
+            const tags = await github.paginate(github.rest.repos.listTags, { owner, repo, per_page: 100 });
+            const versions = tags.map(t => t.name.match(SEMVER)).filter(Boolean).map(m => m.slice(1, 4).map(Number));
+            versions.sort((a, b) => a[0] - b[0] || a[1] - b[1] || a[2] - b[2]);
+            let version;
+            if (versions.length === 0) {
+              const manifest = JSON.parse(fs.readFileSync('mods-unpacked/Humanspeak-WeaponBorders/manifest.json', 'utf8'));
+              version = manifest.version_number;
+              if (!SEMVER.test(`v${version}`)) core.setFailed(`manifest version_number "${version}" is not X.Y.Z`);
+              core.info(`No version tags yet; first publish uses manifest version ${version}.`);
+            } else {
+              let [major, minor, patch] = versions[versions.length - 1];
+              const latest = `${major}.${minor}.${patch}`;
+              const bump = labels.includes('major') ? 'major' : labels.includes('minor') ? 'minor' : 'patch';
+              if (bump === 'major') { major++; minor = 0; patch = 0; }
+              else if (bump === 'minor') { minor++; patch = 0; }
+              else patch++;
+              version = `${major}.${minor}.${patch}`;
+              core.info(`Latest tag v${latest}, ${bump} bump -> ${version}`);
+            }
+
             core.setOutput('skip', String(skip));
-            core.setOutput('changenote', changenote);
+            core.setOutput('version', version);
+            core.setOutput('changenote', `v${version}: ${title}`);
 
   build:
     name: Validate and build
+    needs: meta
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    env:
+      VERSION: ${{ needs.meta.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
 
@@ -67,6 +108,13 @@ jobs:
 
       - name: Validate manifest.json
         run: jq -e . mods-unpacked/Humanspeak-WeaponBorders/manifest.json > /dev/null
+
+      - name: Stamp version ${{ env.VERSION }} into manifest.json
+        run: |
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::Bad version '$VERSION'"; exit 1; }
+          m=mods-unpacked/Humanspeak-WeaponBorders/manifest.json
+          jq --tab --arg v "$VERSION" '.version_number = $v' "$m" > "$m.tmp" && mv "$m.tmp" "$m"
+          grep version_number "$m"
 
       - name: Build zip
         shell: pwsh
@@ -80,8 +128,10 @@ jobs:
           if echo "$entries" | grep -v '^mods-unpacked/Humanspeak-WeaponBorders/'; then echo "::error::Zip entry outside mods-unpacked/Humanspeak-WeaponBorders/"; exit 1; fi
           echo "$entries" | grep -qx 'mods-unpacked/Humanspeak-WeaponBorders/manifest.json' || { echo "::error::manifest.json missing from zip"; exit 1; }
           echo "$entries" | grep -qx 'mods-unpacked/Humanspeak-WeaponBorders/mod_main.gd' || { echo "::error::mod_main.gd missing from zip"; exit 1; }
+          zipped="$(unzip -p dist/Humanspeak-WeaponBorders.zip mods-unpacked/Humanspeak-WeaponBorders/manifest.json | jq -r .version_number)"
+          [ "$zipped" = "$VERSION" ] || { echo "::error::Zipped manifest version is '$zipped', expected '$VERSION'"; exit 1; }
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: Humanspeak-WeaponBorders
           path: dist/Humanspeak-WeaponBorders.zip
@@ -94,11 +144,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     environment: steam
-    permissions: {}
-    concurrency:
-      group: steam-workshop-publish
-      cancel-in-progress: false
+    permissions:
+      contents: write # create the vX.Y.Z tag
     env:
+      VERSION: ${{ needs.meta.outputs.version }}
       WORKSHOP_ITEM_ID: ${{ vars.WORKSHOP_ITEM_ID }}
       STEAM_USERNAME: ${{ secrets.STEAM_USERNAME }}
       STEAM_CONFIG_VDF: ${{ secrets.STEAM_CONFIG_VDF }}
@@ -122,7 +171,7 @@ jobs:
 
       - name: Download built zip
         if: steps.cfg.outputs.ready == 'true'
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: Humanspeak-WeaponBorders
           path: ${{ runner.temp }}/workshop-content
@@ -130,7 +179,7 @@ jobs:
       - name: Setup steamcmd
         if: steps.cfg.outputs.ready == 'true'
         id: steamcmd
-        uses: CyberAndrii/setup-steamcmd@v1
+        uses: andriivitiv/setup-steamcmd@v1
 
       - name: Restore Steam login (config.vdf)
         if: steps.cfg.outputs.ready == 'true'
@@ -175,3 +224,17 @@ jobs:
             exit 1
           fi
           echo "::notice::Published Workshop item $WORKSHOP_ITEM_ID: $CHANGENOTE"
+
+      - name: Tag v${{ env.VERSION }}
+        if: steps.cfg.outputs.ready == 'true'
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const tag = `v${process.env.VERSION}`;
+            await github.rest.git.createRef({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: `refs/tags/${tag}`,
+              sha: context.sha,
+            });
+            core.notice(`Tagged ${context.sha.substring(0, 7)} as ${tag}`);
