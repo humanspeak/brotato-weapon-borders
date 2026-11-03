@@ -1,6 +1,7 @@
 extends "res://ui/menus/run/weapon_selection.gd"
 
 const WBData = preload("res://mods-unpacked/Humanspeak-WeaponBorders/weapon_borders_data.gd")
+const WB_MOD_ID := "Humanspeak-WeaponBorders"
 
 
 # The base class (re)builds each player's grid here, including when co-op
@@ -12,16 +13,20 @@ func _set_base_ui_player_count(count: int, is_coop_run: bool, initialize: bool =
 
 func _wb_apply_borders() -> void:
 	var data = WBData.load_data()
-	for inventory in _get_inventories():
+	var zone = RunData.current_zone
+	var inventories = _get_inventories()
+	ModLoaderLog.info("Applying borders: zone %s, %d inventories, saved: %s" % [str(zone), inventories.size(), to_json(data.best)], WB_MOD_ID)
+	for inventory in inventories:
 		for element in inventory.get_children():
 			if not element is InventoryElement or element.is_random or element.is_special:
 				continue
-			if element.item == null or not "my_id" in element.item:
+			if not element.item is ItemParentData:
 				continue
-			var best = WBData.get_best(data, RunData.current_zone, element.item.my_id)
-			# Only override the look; never touch element.item.tier, because the
-			# picked element.item becomes the actual weapon in the run.
-			element.update_background_color(WBData.danger_to_tier(best))
+			var my_id: String = element.item.my_id
+			var best = WBData.get_best(data, zone, my_id)
+			var tier = WBData.danger_to_tier(best)
+			ModLoaderLog.info("  %s -> best danger %d, tier %d" % [my_id, best, tier], WB_MOD_ID)
+			_wb_paint(element, tier)
 
 
 func _on_selections_completed() -> void:
@@ -29,8 +34,22 @@ func _on_selections_completed() -> void:
 	for player_index in _player_weapons.size():
 		var picks := []
 		for picked in _player_weapons[player_index]:
-			if picked != null and "my_id" in picked:
+			if picked is ItemParentData:
 				picks.push_back(picked.my_id)
 		players.push_back(picks)
+	ModLoaderLog.info("Starting picks for zone %s: %s" % [str(RunData.current_zone), to_json(players)], WB_MOD_ID)
 	WBData.set_current_run(RunData.current_zone, players)
 	._on_selections_completed()
+
+
+# Same as InventoryElement.update_background_color(), but with an explicit tier.
+# (That function treats -1 as "use the item's tier", and -1 is also Tier.DANGER_0.)
+# Only the look changes; element.item.tier is never touched, because the picked
+# element.item becomes the actual weapon in the run.
+func _wb_paint(element: InventoryElement, tier: int) -> void:
+	var stylebox = element.get_stylebox("normal").duplicate()
+	ItemService.change_inventory_element_stylebox_from_tier(stylebox, tier, 0.25, element._frame_panel)
+	var m: Color = element.background_modulate
+	stylebox.bg_color = lerp(stylebox.bg_color, Color(m.r, m.g, m.b), m.a)
+	stylebox.bg_color.a = element.background_transparency
+	element.add_stylebox_override("normal", stylebox)
