@@ -1,6 +1,6 @@
 extends "res://ui/menus/run/weapon_selection.gd"
 
-const WBData = preload("res://mods-unpacked/JasonK-WeaponBorders/weapon_borders_data.gd")
+const WBData = preload("res://mods-unpacked/Humanspeak-WeaponBorders/weapon_borders_data.gd")
 
 
 # The base class (re)builds each player's grid here, including when co-op

@@ -1,6 +1,6 @@
 extends Node
 
-const MOD_ID := "JasonK-WeaponBorders"
+const MOD_ID := "Humanspeak-WeaponBorders"
 
 
 func _init() -> void:

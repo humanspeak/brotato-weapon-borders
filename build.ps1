@@ -1,11 +1,11 @@
-# Builds dist/JasonK-WeaponBorders.zip. Pass -Install to copy it into Brotato's mods folder.
+# Builds dist/Humanspeak-WeaponBorders.zip. Pass -Install to copy it into Brotato's mods folder.
 param([switch]$Install, [string]$GameDir = "C:\Program Files (x86)\Steam\steamapps\common\Brotato")
 $ErrorActionPreference = "Stop"
 Add-Type -AssemblyName System.IO.Compression, System.IO.Compression.FileSystem
 $root = $PSScriptRoot
 $dist = Join-Path $root "dist"
 New-Item -ItemType Directory -Force $dist | Out-Null
-$zipPath = Join-Path $dist "JasonK-WeaponBorders.zip"
+$zipPath = Join-Path $dist "Humanspeak-WeaponBorders.zip"
 if (Test-Path $zipPath) { Remove-Item $zipPath }
 $zip = [System.IO.Compression.ZipFile]::Open($zipPath, "Create")
 try {

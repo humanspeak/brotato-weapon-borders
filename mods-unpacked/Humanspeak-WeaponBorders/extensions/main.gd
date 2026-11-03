@@ -1,6 +1,6 @@
 extends "res://main.gd"
 
-const WBData = preload("res://mods-unpacked/JasonK-WeaponBorders/weapon_borders_data.gd")
+const WBData = preload("res://mods-unpacked/Humanspeak-WeaponBorders/weapon_borders_data.gd")
 
 
 # In endless mode the game doesn't count the run as won at wave 20, so credit

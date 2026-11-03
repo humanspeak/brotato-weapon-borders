@@ -6,7 +6,7 @@ extends Reference
 #   "current_run": { "zone": <zone>, "players": [ ["<my_id>", ...], ... ] }
 # }
 
-const MOD_ID := "JasonK-WeaponBorders"
+const MOD_ID := "Humanspeak-WeaponBorders"
 const SAVE_PATH := "user://mod_weapon_borders.json"
 
 

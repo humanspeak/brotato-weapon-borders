@@ -1,6 +1,6 @@
 {
 	"name": "WeaponBorders",
-	"namespace": "JasonK",
+	"namespace": "Humanspeak",
 	"version_number": "1.0.0",
 	"description": "Colors each starting weapon on the weapon selection screen with the highest danger you have beaten while starting with it, per zone - just like character borders.",
 	"website_url": "https://github.com/humanspeak/brotato-weapon-borders",

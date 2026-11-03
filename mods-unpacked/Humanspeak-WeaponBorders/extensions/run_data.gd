@@ -1,6 +1,6 @@
 extends "res://singletons/run_data.gd"
 
-const WBData = preload("res://mods-unpacked/JasonK-WeaponBorders/weapon_borders_data.gd")
+const WBData = preload("res://mods-unpacked/Humanspeak-WeaponBorders/weapon_borders_data.gd")
 
 
 # Normal wins: surviving wave 20 or killing the final boss(es).
