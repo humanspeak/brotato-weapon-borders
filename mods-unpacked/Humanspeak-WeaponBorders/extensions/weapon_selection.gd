@@ -14,19 +14,14 @@ func _set_base_ui_player_count(count: int, is_coop_run: bool, initialize: bool =
 func _wb_apply_borders() -> void:
 	var data = WBData.load_data()
 	var zone = RunData.current_zone
-	var inventories = _get_inventories()
-	ModLoaderLog.info("Applying borders: zone %s, %d inventories, saved: %s" % [str(zone), inventories.size(), to_json(data.best)], WB_MOD_ID)
-	for inventory in inventories:
+	for inventory in _get_inventories():
 		for element in inventory.get_children():
 			if not element is InventoryElement or element.is_random or element.is_special:
 				continue
 			if not element.item is ItemParentData:
 				continue
 			var my_id: String = element.item.my_id
-			var best = WBData.get_best(data, zone, my_id)
-			var tier = WBData.danger_to_tier(best)
-			ModLoaderLog.info("  %s -> best danger %d, tier %d" % [my_id, best, tier], WB_MOD_ID)
-			_wb_paint(element, tier)
+			_wb_paint(element, WBData.danger_to_tier(WBData.get_best(data, zone, my_id)))
 
 
 func _on_selections_completed() -> void:
