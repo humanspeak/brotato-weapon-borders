@@ -1,0 +1,20 @@
+{
+	"name": "WeaponBorders",
+	"namespace": "JasonK",
+	"version_number": "1.0.0",
+	"description": "Colors each starting weapon on the weapon selection screen with the highest danger you have beaten while starting with it, per zone - just like character borders.",
+	"website_url": "https://github.com/humanspeak/brotato-weapon-borders",
+	"dependencies": [],
+	"extra": {
+		"godot": {
+			"authors": ["Jason Kummerl"],
+			"optional_dependencies": [],
+			"incompatibilities": [],
+			"load_before": [],
+			"compatible_game_version": ["1.2.0.0"],
+			"compatible_mod_loader_version": ["6.3.0"],
+			"config_schema": {},
+			"tags": ["GUI", "Weapons", "Utilities"]
+		}
+	}
+}
