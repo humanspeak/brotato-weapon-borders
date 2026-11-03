@@ -9,6 +9,6 @@ Colors each weapon on the **weapon selection** screen by the highest danger you'
 
 ## Build / install
 ```powershell
-./build.ps1 -Install   # builds dist/Humanspeak-WeaponBorders.zip and copies it to Brotato\mods
+./build.ps1 -Install   # builds dist/Humanspeak-WeaponBorders.zip and copies it into a subscribed Workshop item folder (Steam only loads subscribed items)
 ```
 Logs: `%APPDATA%\Brotato\logs\` (search for `Humanspeak-WeaponBorders`).

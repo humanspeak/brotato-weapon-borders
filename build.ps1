@@ -1,5 +1,15 @@
-# Builds dist/Humanspeak-WeaponBorders.zip. Pass -Install to copy it into Brotato's mods folder.
-param([switch]$Install, [string]$GameDir = "C:\Program Files (x86)\Steam\steamapps\common\Brotato")
+# Builds dist/Humanspeak-WeaponBorders.zip.
+#
+# -Install: copies the zip into a *subscribed* Workshop item's folder for local
+# testing. On Steam, Brotato's mod loader only loads zips from the folders of
+# Workshop items you're subscribed to (the game's local "mods" folder is ignored),
+# but it loads every zip inside those folders. Default host item: Damage Meter.
+# Steam may wipe this copy when that item updates; just re-run with -Install.
+param(
+    [switch]$Install,
+    [string]$WorkshopDir = "C:\Program Files (x86)\Steam\steamapps\workshop\content\1942280",
+    [string]$HostItemId = "3578347192"
+)
 $ErrorActionPreference = "Stop"
 Add-Type -AssemblyName System.IO.Compression, System.IO.Compression.FileSystem
 $root = $PSScriptRoot
@@ -17,8 +27,8 @@ try {
 } finally { $zip.Dispose() }
 Write-Host "Built $zipPath"
 if ($Install) {
-    $mods = Join-Path $GameDir "mods"
-    New-Item -ItemType Directory -Force $mods | Out-Null
-    Copy-Item $zipPath $mods -Force
-    Write-Host "Installed to $mods"
+    $target = Join-Path $WorkshopDir $HostItemId
+    if (-not (Test-Path $target)) { throw "Workshop item folder not found: $target (are you subscribed to it?)" }
+    Copy-Item $zipPath $target -Force
+    Write-Host "Installed to $target"
 }
