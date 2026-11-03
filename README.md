@@ -28,7 +28,7 @@ Logs: `%APPDATA%\Brotato\logs\` (search for `Humanspeak-WeaponBorders`).
 
 **Skipping a publish:** add the `skip-publish` label to the PR before merging. Direct pushes with no PR always publish.
 
-**Configuration** (Settings → Secrets and variables → Actions):
+**Configuration** (Settings → Environments → `steam`; the publish job runs in that environment):
 | Name | Type | Value |
 | --- | --- | --- |
 | `WORKSHOP_ITEM_ID` | variable | Workshop item ID (number in the item's URL) |

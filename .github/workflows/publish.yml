@@ -93,6 +93,7 @@ jobs:
     if: needs.meta.outputs.skip != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    environment: steam
     permissions: {}
     concurrency:
       group: steam-workshop-publish
